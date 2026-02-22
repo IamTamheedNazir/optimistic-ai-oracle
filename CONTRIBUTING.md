@@ -1,8 +1,8 @@
-# Contributing to ABSF-2025
+# Contributing to Optimistic AI Oracle
 
-First off, thank you for considering contributing to ABSF-2025! 🎉
+First off, thank you for considering contributing to Optimistic AI Oracle! 🎉
 
-It's people like you that make ABSF-2025 such a great tool for the decentralized AI community.
+It's people like you that make this project such a great tool for the decentralized AI community.
 
 ## 📋 Table of Contents
 
@@ -106,8 +106,8 @@ Unsure where to begin? You can start by looking through these `beginner` and `he
 
 ```bash
 # 1. Fork and clone the repository
-git clone https://github.com/YOUR_USERNAME/absf-2025.git
-cd absf-2025
+git clone https://github.com/YOUR_USERNAME/optimistic-ai-oracle.git
+cd optimistic-ai-oracle
 
 # 2. Install dependencies
 npm install
@@ -129,7 +129,7 @@ npx hardhat node
 ### Project Structure
 
 ```
-absf-2025/
+optimistic-ai-oracle/
 ├── contracts/          # Solidity smart contracts
 ├── scripts/            # Deployment and interaction scripts
 ├── test/              # Test files (to be added)
@@ -369,7 +369,7 @@ Contributors will be recognized in:
 
 ## 📄 License
 
-By contributing to ABSF-2025, you agree that your contributions will be licensed under the MIT License.
+By contributing to Optimistic AI Oracle, you agree that your contributions will be licensed under the MIT License.
 
 ---
 
