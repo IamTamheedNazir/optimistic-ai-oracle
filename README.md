@@ -1,14 +1,14 @@
 <div align="center">
 
-# 🌌 ABSF-2025
-### AI-Blockchain Symbiosis Framework
+# 🌌 Optimistic AI Oracle
+### Decentralized AI Inference with Blockchain Verification
 
 <img src="https://img.shields.io/badge/Solidity-0.8.20-e6e6e6?style=for-the-badge&logo=solidity&logoColor=black" alt="Solidity"/>
 <img src="https://img.shields.io/badge/Hardhat-2.24.1-fff100?style=for-the-badge&logo=hardhat&logoColor=black" alt="Hardhat"/>
 <img src="https://img.shields.io/badge/React-18-61dafb?style=for-the-badge&logo=react&logoColor=black" alt="React"/>
 <img src="https://img.shields.io/badge/License-MIT-00d4aa?style=for-the-badge" alt="License"/>
 
-**Decentralized AI Inference with Optimistic Verification**
+**Trust-Minimized AI Inference on Ethereum**
 
 [🚀 Quick Start](#-quick-start) • [📖 Documentation](#-architecture) • [🔬 Research](#-research-foundation) • [🤝 Contributing](#-contributing)
 
@@ -18,9 +18,11 @@
 
 ## 🎯 Vision
 
-ABSF (AI-Blockchain Symbiosis Framework) bridges the gap between artificial intelligence and blockchain technology, creating a **trust-minimized, privacy-preserving, and economically incentivized** ecosystem for AI inference verification.
+**Optimistic AI Oracle** bridges the gap between artificial intelligence and blockchain technology, creating a **trust-minimized, privacy-preserving, and economically incentivized** ecosystem for AI inference verification.
 
-### 🌟 What Makes ABSF Unique?
+Built on the principles of optimistic rollups, this protocol enables scalable, decentralized AI inference with on-chain dispute resolution and economic security guarantees.
+
+### 🌟 What Makes It Unique?
 
 ```mermaid
 graph LR
@@ -50,7 +52,7 @@ graph LR
 ### 📦 System Components
 
 ```
-absf-2025/
+optimistic-ai-oracle/
 ├── 🔷 contracts/              # Smart Contracts
 │   └── OptimisticOracle.sol   # Core oracle implementation
 ├── 🎨 absf-frontend/          # React Web3 dApp
@@ -128,8 +130,8 @@ sequenceDiagram
 
 ```bash
 # 1️⃣ Clone the repository
-git clone https://github.com/IamTamheedNazir/absf-2025.git
-cd absf-2025
+git clone https://github.com/IamTamheedNazir/optimistic-ai-oracle.git
+cd optimistic-ai-oracle
 
 # 2️⃣ Install dependencies
 npm install
@@ -235,7 +237,7 @@ function disputeInference(
 
 ## 🔬 Research Foundation
 
-ABSF-2025 is built on cutting-edge research in decentralized AI and blockchain verification:
+Optimistic AI Oracle is built on cutting-edge research in decentralized AI and blockchain verification:
 
 ### 📚 Key Concepts
 
@@ -336,7 +338,7 @@ with Energy Web APIs
 
 ```mermaid
 gantt
-    title ABSF-2025 Development Roadmap
+    title Optimistic AI Oracle Development Roadmap
     dateFormat  YYYY-MM-DD
     section Phase 1: Foundation
     Smart Contract Security     :2026-02-23, 14d
@@ -565,7 +567,7 @@ copies or substantial portions of the Software.
 
 <div align="center">
 
-[![Star History Chart](https://api.star-history.com/svg?repos=IamTamheedNazir/absf-2025&type=Date)](https://star-history.com/#IamTamheedNazir/absf-2025&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=IamTamheedNazir/optimistic-ai-oracle&type=Date)](https://star-history.com/#IamTamheedNazir/optimistic-ai-oracle&Date)
 
 **If you find this project useful, please consider giving it a ⭐!**
 
@@ -577,12 +579,12 @@ copies or substantial portions of the Software.
 
 <div align="center">
 
-![GitHub repo size](https://img.shields.io/github/repo-size/IamTamheedNazir/absf-2025?style=for-the-badge)
-![GitHub language count](https://img.shields.io/github/languages/count/IamTamheedNazir/absf-2025?style=for-the-badge)
-![GitHub top language](https://img.shields.io/github/languages/top/IamTamheedNazir/absf-2025?style=for-the-badge)
-![GitHub last commit](https://img.shields.io/github/last-commit/IamTamheedNazir/absf-2025?style=for-the-badge)
-![GitHub issues](https://img.shields.io/github/issues/IamTamheedNazir/absf-2025?style=for-the-badge)
-![GitHub pull requests](https://img.shields.io/github/issues-pr/IamTamheedNazir/absf-2025?style=for-the-badge)
+![GitHub repo size](https://img.shields.io/github/repo-size/IamTamheedNazir/optimistic-ai-oracle?style=for-the-badge)
+![GitHub language count](https://img.shields.io/github/languages/count/IamTamheedNazir/optimistic-ai-oracle?style=for-the-badge)
+![GitHub top language](https://img.shields.io/github/languages/top/IamTamheedNazir/optimistic-ai-oracle?style=for-the-badge)
+![GitHub last commit](https://img.shields.io/github/last-commit/IamTamheedNazir/optimistic-ai-oracle?style=for-the-badge)
+![GitHub issues](https://img.shields.io/github/issues/IamTamheedNazir/optimistic-ai-oracle?style=for-the-badge)
+![GitHub pull requests](https://img.shields.io/github/issues-pr/IamTamheedNazir/optimistic-ai-oracle?style=for-the-badge)
 
 </div>
 
@@ -623,6 +625,6 @@ Special thanks to:
 
 <div align="center">
 
-**[⬆ Back to Top](#-absf-2025)**
+**[⬆ Back to Top](#-optimistic-ai-oracle)**
 
 </div>
