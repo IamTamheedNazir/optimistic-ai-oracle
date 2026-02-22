@@ -4,7 +4,14 @@ import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
 
-// Contract ABI - Add your deployed contract ABI here
+// Import new components
+import RequestHistory from './components/RequestHistory';
+import LoadingSpinner, { InlineSpinner } from './components/LoadingSpinner';
+import TransactionStatus from './components/TransactionStatus';
+import { handleError, withRetry, validateTransaction } from './utils/errorHandler';
+import { SUCCESS_MESSAGES, INFO_MESSAGES } from './utils/errorMessages';
+
+// Contract ABI
 const CONTRACT_ABI = [
   "function minStake() view returns (uint256)",
   "function minProverStake() view returns (uint256)",
@@ -27,7 +34,6 @@ const CONTRACT_ABI = [
   "event InferenceSettled(uint256 indexed requestId, address indexed winner, bool inferenceValid, uint256 reward)"
 ];
 
-// Replace with your deployed contract address
 const CONTRACT_ADDRESS = process.env.REACT_APP_CONTRACT_ADDRESS || "0x...";
 
 function App() {
@@ -50,6 +56,8 @@ function App() {
   // UI state
   const [activeTab, setActiveTab] = useState('request');
   const [loading, setLoading] = useState(false);
+  const [txHash, setTxHash] = useState(null);
+  const [showTxStatus, setShowTxStatus] = useState(false);
   
   // Form state
   const [modelName, setModelName] = useState('');
@@ -78,12 +86,10 @@ function App() {
         const web3Provider = new ethers.BrowserProvider(window.ethereum);
         setProvider(web3Provider);
 
-        // Listen for account changes
         window.ethereum.on('accountsChanged', handleAccountsChanged);
         window.ethereum.on('chainChanged', handleChainChanged);
       } catch (error) {
-        console.error('Error initializing Web3:', error);
-        toast.error('Failed to initialize Web3');
+        handleError(error, 'Initialize Web3');
       }
     } else {
       toast.error('Please install MetaMask!');
@@ -98,7 +104,9 @@ function App() {
 
     try {
       setLoading(true);
-      const accounts = await provider.send('eth_requestAccounts', []);
+      toast.info(INFO_MESSAGES.CONNECTING_WALLET);
+
+      const accounts = await provider.send("eth_requestAccounts", []);
       const userAccount = accounts[0];
       setAccount(userAccount);
 
@@ -111,14 +119,14 @@ function App() {
       const userBalance = await provider.getBalance(userAccount);
       setBalance(ethers.formatEther(userBalance));
 
-      // Initialize contract
-      const oracleContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, web3Signer);
-      setContract(oracleContract);
+      if (CONTRACT_ADDRESS && CONTRACT_ADDRESS !== "0x...") {
+        const oracleContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, web3Signer);
+        setContract(oracleContract);
+      }
 
-      toast.success('Wallet connected successfully!');
+      toast.success(SUCCESS_MESSAGES.WALLET_CONNECTED);
     } catch (error) {
-      console.error('Error connecting wallet:', error);
-      toast.error('Failed to connect wallet');
+      handleError(error, 'Connect Wallet');
     } finally {
       setLoading(false);
     }
@@ -126,24 +134,23 @@ function App() {
 
   const loadContractData = async () => {
     try {
-      const [minStakeVal, minProverStakeVal, disputeWindowVal, requestIdVal, isProverVal, proverStakeVal] = 
-        await Promise.all([
-          contract.minStake(),
-          contract.minProverStake(),
-          contract.disputeWindow(),
-          contract.getCurrentRequestId(),
-          contract.isRegisteredProver(account),
-          contract.getProverStake(account)
-        ]);
+      const [min, minProv, window, reqId, isProv, stake] = await Promise.all([
+        contract.minStake(),
+        contract.minProverStake(),
+        contract.disputeWindow(),
+        contract.getCurrentRequestId(),
+        contract.isRegisteredProver(account),
+        contract.getProverStake(account)
+      ]);
 
-      setMinStake(ethers.formatEther(minStakeVal));
-      setMinProverStake(ethers.formatEther(minProverStakeVal));
-      setDisputeWindow((Number(disputeWindowVal) / 3600).toString());
-      setCurrentRequestId(requestIdVal.toString());
-      setIsProver(isProverVal);
-      setProverStake(ethers.formatEther(proverStakeVal));
+      setMinStake(ethers.formatEther(min));
+      setMinProverStake(ethers.formatEther(minProv));
+      setDisputeWindow(window.toString());
+      setCurrentRequestId(reqId.toString());
+      setIsProver(isProv);
+      setProverStake(ethers.formatEther(stake));
     } catch (error) {
-      console.error('Error loading contract data:', error);
+      handleError(error, 'Load Contract Data');
     }
   };
 
@@ -162,157 +169,238 @@ function App() {
     window.location.reload();
   };
 
-  // Contract interactions
-  const handleRegisterProver = async () => {
-    if (!contract || !stakeAmount) {
-      toast.error('Please enter stake amount');
+  // Request Inference
+  const handleRequestInference = async (e) => {
+    e.preventDefault();
+    
+    const validation = await validateTransaction({
+      signer,
+      contract,
+      stake: parseFloat(stakeAmount),
+      minStake: parseFloat(minStake),
+      balance: parseFloat(balance),
+    });
+
+    if (!validation.isValid) {
+      validation.errors.forEach(err => toast.error(err));
       return;
     }
 
     try {
       setLoading(true);
-      const stake = ethers.parseEther(stakeAmount);
-      const tx = await contract.registerProver({ value: stake });
-      toast.info('Transaction submitted...');
-      
-      const receipt = await tx.wait();
-      toast.success('Registered as prover successfully!');
-      
-      await loadContractData();
-      setStakeAmount('');
-    } catch (error) {
-      console.error('Error registering prover:', error);
-      toast.error(error.reason || 'Failed to register as prover');
-    } finally {
-      setLoading(false);
-    }
-  };
+      toast.info(INFO_MESSAGES.PROCESSING_TRANSACTION);
 
-  const handleRequestInference = async () => {
-    if (!contract || !modelName || !inputData || !stakeAmount) {
-      toast.error('Please fill all fields');
-      return;
-    }
-
-    try {
-      setLoading(true);
       const modelHash = ethers.id(modelName);
       const inputBytes = ethers.toUtf8Bytes(inputData);
       const stake = ethers.parseEther(stakeAmount);
 
-      const tx = await contract.requestInference(modelHash, inputBytes, { value: stake });
-      toast.info('Transaction submitted...');
-      
+      const tx = await withRetry(
+        () => contract.requestInference(modelHash, inputBytes, { value: stake }),
+        3
+      );
+
+      setTxHash(tx.hash);
+      setShowTxStatus(true);
+      toast.info(SUCCESS_MESSAGES.TRANSACTION_SUBMITTED);
+
       const receipt = await tx.wait();
       
-      // Get request ID from event
-      const event = receipt.logs.find(log => {
-        try {
-          return contract.interface.parseLog(log).name === 'InferenceRequested';
-        } catch {
-          return false;
-        }
-      });
-
-      const newRequestId = event ? contract.interface.parseLog(event).args[0] : 'Unknown';
+      toast.success(SUCCESS_MESSAGES.INFERENCE_REQUESTED);
       
-      toast.success(`Inference requested! Request ID: ${newRequestId.toString()}`);
-      
-      await loadContractData();
+      // Reset form
       setModelName('');
       setInputData('');
       setStakeAmount('');
+      
+      // Reload data
+      await loadContractData();
+      
+      setShowTxStatus(false);
     } catch (error) {
-      console.error('Error requesting inference:', error);
-      toast.error(error.reason || 'Failed to request inference');
+      handleError(error, 'Request Inference');
+      setShowTxStatus(false);
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePostInference = async () => {
-    if (!contract || !requestId || !outputData) {
-      toast.error('Please fill all fields');
+  // Register as Prover
+  const handleRegisterProver = async () => {
+    const validation = await validateTransaction({
+      signer,
+      contract,
+      stake: parseFloat(minProverStake),
+      balance: parseFloat(balance),
+    });
+
+    if (!validation.isValid) {
+      validation.errors.forEach(err => toast.error(err));
       return;
     }
 
     try {
       setLoading(true);
-      const outputBytes = ethers.toUtf8Bytes(outputData);
+      toast.info(INFO_MESSAGES.PROCESSING_TRANSACTION);
 
-      const tx = await contract.postInference(requestId, outputBytes);
-      toast.info('Transaction submitted...');
-      
+      const stake = ethers.parseEther(minProverStake);
+      const tx = await withRetry(
+        () => contract.registerProver({ value: stake }),
+        3
+      );
+
+      setTxHash(tx.hash);
+      setShowTxStatus(true);
+      toast.info(SUCCESS_MESSAGES.TRANSACTION_SUBMITTED);
+
       await tx.wait();
-      toast.success('Inference posted successfully!');
       
+      toast.success(SUCCESS_MESSAGES.PROVER_REGISTERED);
       await loadContractData();
+      
+      setShowTxStatus(false);
+    } catch (error) {
+      handleError(error, 'Register Prover');
+      setShowTxStatus(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Post Inference
+  const handlePostInference = async (e) => {
+    e.preventDefault();
+
+    if (!requestId || !outputData) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      toast.info(INFO_MESSAGES.PROCESSING_TRANSACTION);
+
+      const outputBytes = ethers.toUtf8Bytes(outputData);
+      const tx = await withRetry(
+        () => contract.postInference(requestId, outputBytes),
+        3
+      );
+
+      setTxHash(tx.hash);
+      setShowTxStatus(true);
+      toast.info(SUCCESS_MESSAGES.TRANSACTION_SUBMITTED);
+
+      await tx.wait();
+      
+      toast.success(SUCCESS_MESSAGES.INFERENCE_POSTED);
+      
       setRequestId('');
       setOutputData('');
+      
+      setShowTxStatus(false);
     } catch (error) {
-      console.error('Error posting inference:', error);
-      toast.error(error.reason || 'Failed to post inference');
+      handleError(error, 'Post Inference');
+      setShowTxStatus(false);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDisputeInference = async () => {
-    if (!contract || !requestId || !counterExample || !stakeAmount) {
-      toast.error('Please fill all fields');
+  // Dispute Inference
+  const handleDisputeInference = async (e) => {
+    e.preventDefault();
+
+    if (!requestId || !counterExample) {
+      toast.error('Please fill in all fields');
       return;
     }
 
     try {
       setLoading(true);
-      const counterBytes = ethers.toUtf8Bytes(counterExample);
-      const stake = ethers.parseEther(stakeAmount);
 
-      const tx = await contract.disputeInference(requestId, counterBytes, { value: stake });
-      toast.info('Transaction submitted...');
-      
+      // Get request details to calculate required stake
+      const request = await contract.getRequest(requestId);
+      const requiredStake = request.requesterStake + request.proverStake;
+
+      const validation = await validateTransaction({
+        signer,
+        contract,
+        stake: parseFloat(ethers.formatEther(requiredStake)),
+        balance: parseFloat(balance),
+      });
+
+      if (!validation.isValid) {
+        validation.errors.forEach(err => toast.error(err));
+        setLoading(false);
+        return;
+      }
+
+      toast.info(INFO_MESSAGES.PROCESSING_TRANSACTION);
+
+      const counterBytes = ethers.toUtf8Bytes(counterExample);
+      const tx = await withRetry(
+        () => contract.disputeInference(requestId, counterBytes, { value: requiredStake }),
+        3
+      );
+
+      setTxHash(tx.hash);
+      setShowTxStatus(true);
+      toast.info(SUCCESS_MESSAGES.TRANSACTION_SUBMITTED);
+
       await tx.wait();
-      toast.success('Dispute submitted successfully!');
       
-      await loadContractData();
+      toast.success(SUCCESS_MESSAGES.DISPUTE_SUBMITTED);
+      
       setRequestId('');
       setCounterExample('');
-      setStakeAmount('');
+      
+      setShowTxStatus(false);
     } catch (error) {
-      console.error('Error disputing inference:', error);
-      toast.error(error.reason || 'Failed to dispute inference');
+      handleError(error, 'Dispute Inference');
+      setShowTxStatus(false);
     } finally {
       setLoading(false);
     }
   };
 
+  // Finalize Inference
   const handleFinalizeInference = async () => {
-    if (!contract || !requestId) {
-      toast.error('Please enter request ID');
+    if (!requestId) {
+      toast.error('Please enter a request ID');
       return;
     }
 
     try {
       setLoading(true);
-      const tx = await contract.finalizeInference(requestId);
-      toast.info('Transaction submitted...');
-      
+      toast.info(INFO_MESSAGES.PROCESSING_TRANSACTION);
+
+      const tx = await withRetry(
+        () => contract.finalizeInference(requestId),
+        3
+      );
+
+      setTxHash(tx.hash);
+      setShowTxStatus(true);
+      toast.info(SUCCESS_MESSAGES.TRANSACTION_SUBMITTED);
+
       await tx.wait();
-      toast.success('Inference finalized successfully!');
       
-      await loadContractData();
+      toast.success(SUCCESS_MESSAGES.INFERENCE_FINALIZED);
+      
       setRequestId('');
+      
+      setShowTxStatus(false);
     } catch (error) {
-      console.error('Error finalizing inference:', error);
-      toast.error(error.reason || 'Failed to finalize inference');
+      handleError(error, 'Finalize Inference');
+      setShowTxStatus(false);
     } finally {
       setLoading(false);
     }
   };
 
+  // View Request Details
   const handleViewRequest = async () => {
-    if (!contract || !requestId) {
-      toast.error('Please enter request ID');
+    if (!requestId) {
+      toast.error('Please enter a request ID');
       return;
     }
 
@@ -320,47 +408,107 @@ function App() {
       setLoading(true);
       const request = await contract.getRequest(requestId);
       setRequestDetails(request);
-      toast.success('Request details loaded!');
+      toast.success('Request details loaded');
     } catch (error) {
-      console.error('Error viewing request:', error);
-      toast.error('Failed to load request details');
+      handleError(error, 'View Request');
     } finally {
       setLoading(false);
     }
   };
 
-  const getStatusName = (status) => {
-    const statuses = ['Pending', 'Posted', 'Disputed', 'Finalized', 'Settled'];
-    return statuses[status] || 'Unknown';
+  // Increase Prover Stake
+  const handleIncreaseStake = async () => {
+    if (!stakeAmount) {
+      toast.error('Please enter stake amount');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      toast.info(INFO_MESSAGES.PROCESSING_TRANSACTION);
+
+      const stake = ethers.parseEther(stakeAmount);
+      const tx = await withRetry(
+        () => contract.increaseProverStake({ value: stake }),
+        3
+      );
+
+      setTxHash(tx.hash);
+      setShowTxStatus(true);
+      toast.info(SUCCESS_MESSAGES.TRANSACTION_SUBMITTED);
+
+      await tx.wait();
+      
+      toast.success(SUCCESS_MESSAGES.STAKE_INCREASED);
+      
+      setStakeAmount('');
+      await loadContractData();
+      
+      setShowTxStatus(false);
+    } catch (error) {
+      handleError(error, 'Increase Stake');
+      setShowTxStatus(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Unregister Prover
+  const handleUnregisterProver = async () => {
+    try {
+      setLoading(true);
+      toast.info(INFO_MESSAGES.PROCESSING_TRANSACTION);
+
+      const tx = await withRetry(
+        () => contract.unregisterProver(),
+        3
+      );
+
+      setTxHash(tx.hash);
+      setShowTxStatus(true);
+      toast.info(SUCCESS_MESSAGES.TRANSACTION_SUBMITTED);
+
+      await tx.wait();
+      
+      toast.success(SUCCESS_MESSAGES.PROVER_UNREGISTERED);
+      await loadContractData();
+      
+      setShowTxStatus(false);
+    } catch (error) {
+      handleError(error, 'Unregister Prover');
+      setShowTxStatus(false);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="App">
       <ToastContainer position="top-right" autoClose={5000} />
-      
+
       {/* Header */}
       <header className="header">
         <div className="container">
-          <h1>🌌 Optimistic AI Oracle</h1>
-          <p className="subtitle">Decentralized AI Inference with Blockchain Verification</p>
+          <h1>🔮 Optimistic AI Oracle</h1>
+          <p className="subtitle">Decentralized AI Inference with Optimistic Verification</p>
           
           {!account ? (
-            <button onClick={connectWallet} disabled={loading} className="connect-btn">
-              {loading ? 'Connecting...' : '🔗 Connect Wallet'}
+            <button onClick={connectWallet} className="connect-btn" disabled={loading}>
+              {loading ? <><InlineSpinner /> Connecting...</> : '🔌 Connect Wallet'}
             </button>
           ) : (
             <div className="wallet-info">
               <div className="info-item">
-                <span className="label">Account:</span>
+                <span className="label">Account</span>
                 <span className="value">{account.substring(0, 6)}...{account.substring(38)}</span>
               </div>
               <div className="info-item">
-                <span className="label">Balance:</span>
+                <span className="label">Balance</span>
                 <span className="value">{parseFloat(balance).toFixed(4)} ETH</span>
               </div>
               <div className="info-item">
-                <span className="label">Network:</span>
-                <span className="value">{chainId === 11155111 ? 'Sepolia' : chainId}</span>
+                <span className="label">Network</span>
+                <span className="value">Chain ID: {chainId}</span>
               </div>
             </div>
           )}
@@ -368,302 +516,336 @@ function App() {
       </header>
 
       {/* Main Content */}
-      {account && contract && (
-        <main className="main">
-          <div className="container">
-            {/* Contract Info */}
-            <div className="contract-info">
-              <h2>📊 Contract Information</h2>
-              <div className="info-grid">
-                <div className="info-card">
-                  <span className="info-label">Min Stake</span>
-                  <span className="info-value">{minStake} ETH</span>
-                </div>
-                <div className="info-card">
-                  <span className="info-label">Min Prover Stake</span>
-                  <span className="info-value">{minProverStake} ETH</span>
-                </div>
-                <div className="info-card">
-                  <span className="info-label">Dispute Window</span>
-                  <span className="info-value">{disputeWindow} hours</span>
-                </div>
-                <div className="info-card">
-                  <span className="info-label">Total Requests</span>
-                  <span className="info-value">{currentRequestId}</span>
-                </div>
-                <div className="info-card">
-                  <span className="info-label">Prover Status</span>
-                  <span className="info-value">{isProver ? '✅ Registered' : '❌ Not Registered'}</span>
-                </div>
-                <div className="info-card">
-                  <span className="info-label">Your Prover Stake</span>
-                  <span className="info-value">{proverStake} ETH</span>
-                </div>
-              </div>
+      <main className="main">
+        <div className="container">
+          {!account ? (
+            <div className="info-text">
+              👆 Please connect your wallet to continue
             </div>
-
-            {/* Tabs */}
-            <div className="tabs">
-              <button 
-                className={activeTab === 'request' ? 'tab active' : 'tab'}
-                onClick={() => setActiveTab('request')}
-              >
-                📤 Request Inference
-              </button>
-              <button 
-                className={activeTab === 'prover' ? 'tab active' : 'tab'}
-                onClick={() => setActiveTab('prover')}
-              >
-                👨‍💻 Prover Actions
-              </button>
-              <button 
-                className={activeTab === 'dispute' ? 'tab active' : 'tab'}
-                onClick={() => setActiveTab('dispute')}
-              >
-                ⚔️ Dispute
-              </button>
-              <button 
-                className={activeTab === 'view' ? 'tab active' : 'tab'}
-                onClick={() => setActiveTab('view')}
-              >
-                🔍 View Request
-              </button>
+          ) : !contract ? (
+            <div className="warning-text">
+              ⚠️ Contract not configured. Please set REACT_APP_CONTRACT_ADDRESS in .env
             </div>
-
-            {/* Tab Content */}
-            <div className="tab-content">
-              {activeTab === 'request' && (
-                <div className="form-section">
-                  <h3>📤 Request AI Inference</h3>
-                  <div className="form-group">
-                    <label>Model Name</label>
-                    <input
-                      type="text"
-                      value={modelName}
-                      onChange={(e) => setModelName(e.target.value)}
-                      placeholder="e.g., gpt-4, llama-2"
-                    />
+          ) : (
+            <>
+              {/* Contract Info */}
+              <div className="contract-info">
+                <h2>📊 Contract Information</h2>
+                <div className="info-grid">
+                  <div className="info-card">
+                    <span className="info-label">Min Stake</span>
+                    <span className="info-value">{minStake} ETH</span>
                   </div>
-                  <div className="form-group">
-                    <label>Input Data</label>
-                    <textarea
-                      value={inputData}
-                      onChange={(e) => setInputData(e.target.value)}
-                      placeholder="Enter your input data..."
-                      rows="4"
-                    />
+                  <div className="info-card">
+                    <span className="info-label">Min Prover Stake</span>
+                    <span className="info-value">{minProverStake} ETH</span>
                   </div>
-                  <div className="form-group">
-                    <label>Stake Amount (ETH)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={stakeAmount}
-                      onChange={(e) => setStakeAmount(e.target.value)}
-                      placeholder={`Minimum: ${minStake} ETH`}
-                    />
+                  <div className="info-card">
+                    <span className="info-label">Dispute Window</span>
+                    <span className="info-value">{(parseInt(disputeWindow) / 3600).toFixed(0)} hours</span>
                   </div>
-                  <button 
-                    onClick={handleRequestInference} 
-                    disabled={loading}
-                    className="action-btn"
-                  >
-                    {loading ? 'Processing...' : 'Submit Request'}
-                  </button>
-                </div>
-              )}
-
-              {activeTab === 'prover' && (
-                <div className="form-section">
-                  <h3>👨‍💻 Prover Actions</h3>
-                  
-                  {!isProver ? (
-                    <>
-                      <p className="info-text">Register as a prover to post inference results</p>
-                      <div className="form-group">
-                        <label>Stake Amount (ETH)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={stakeAmount}
-                          onChange={(e) => setStakeAmount(e.target.value)}
-                          placeholder={`Minimum: ${minProverStake} ETH`}
-                        />
-                      </div>
-                      <button 
-                        onClick={handleRegisterProver} 
-                        disabled={loading}
-                        className="action-btn"
-                      >
-                        {loading ? 'Processing...' : 'Register as Prover'}
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <p className="success-text">✅ You are registered as a prover</p>
-                      <div className="form-group">
-                        <label>Request ID</label>
-                        <input
-                          type="number"
-                          value={requestId}
-                          onChange={(e) => setRequestId(e.target.value)}
-                          placeholder="Enter request ID"
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Output Data</label>
-                        <textarea
-                          value={outputData}
-                          onChange={(e) => setOutputData(e.target.value)}
-                          placeholder="Enter inference result..."
-                          rows="4"
-                        />
-                      </div>
-                      <button 
-                        onClick={handlePostInference} 
-                        disabled={loading}
-                        className="action-btn"
-                      >
-                        {loading ? 'Processing...' : 'Post Inference'}
-                      </button>
-                      
-                      <div className="divider"></div>
-                      
-                      <h4>Finalize Inference</h4>
-                      <p className="info-text">Finalize after dispute window expires</p>
-                      <div className="form-group">
-                        <label>Request ID</label>
-                        <input
-                          type="number"
-                          value={requestId}
-                          onChange={(e) => setRequestId(e.target.value)}
-                          placeholder="Enter request ID"
-                        />
-                      </div>
-                      <button 
-                        onClick={handleFinalizeInference} 
-                        disabled={loading}
-                        className="action-btn secondary"
-                      >
-                        {loading ? 'Processing...' : 'Finalize Inference'}
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'dispute' && (
-                <div className="form-section">
-                  <h3>⚔️ Dispute Inference</h3>
-                  <p className="warning-text">⚠️ Disputing requires stake equal to requester + prover stakes</p>
-                  <div className="form-group">
-                    <label>Request ID</label>
-                    <input
-                      type="number"
-                      value={requestId}
-                      onChange={(e) => setRequestId(e.target.value)}
-                      placeholder="Enter request ID"
-                    />
+                  <div className="info-card">
+                    <span className="info-label">Total Requests</span>
+                    <span className="info-value">{currentRequestId}</span>
                   </div>
-                  <div className="form-group">
-                    <label>Counter-Example</label>
-                    <textarea
-                      value={counterExample}
-                      onChange={(e) => setCounterExample(e.target.value)}
-                      placeholder="Provide proof that inference is incorrect..."
-                      rows="4"
-                    />
+                  <div className="info-card">
+                    <span className="info-label">Prover Status</span>
+                    <span className="info-value">{isProver ? '✅ Registered' : '❌ Not Registered'}</span>
                   </div>
-                  <div className="form-group">
-                    <label>Stake Amount (ETH)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={stakeAmount}
-                      onChange={(e) => setStakeAmount(e.target.value)}
-                      placeholder="Enter stake amount"
-                    />
-                  </div>
-                  <button 
-                    onClick={handleDisputeInference} 
-                    disabled={loading}
-                    className="action-btn danger"
-                  >
-                    {loading ? 'Processing...' : 'Submit Dispute'}
-                  </button>
-                </div>
-              )}
-
-              {activeTab === 'view' && (
-                <div className="form-section">
-                  <h3>🔍 View Request Details</h3>
-                  <div className="form-group">
-                    <label>Request ID</label>
-                    <input
-                      type="number"
-                      value={requestId}
-                      onChange={(e) => setRequestId(e.target.value)}
-                      placeholder="Enter request ID"
-                    />
-                  </div>
-                  <button 
-                    onClick={handleViewRequest} 
-                    disabled={loading}
-                    className="action-btn"
-                  >
-                    {loading ? 'Loading...' : 'Load Details'}
-                  </button>
-
-                  {requestDetails && (
-                    <div className="request-details">
-                      <h4>Request Details</h4>
-                      <div className="details-grid">
-                        <div className="detail-item">
-                          <span className="detail-label">Requester:</span>
-                          <span className="detail-value">{requestDetails.requester}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="detail-label">Prover:</span>
-                          <span className="detail-value">{requestDetails.prover || 'None'}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="detail-label">Challenger:</span>
-                          <span className="detail-value">{requestDetails.challenger || 'None'}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="detail-label">Status:</span>
-                          <span className="detail-value status">{getStatusName(requestDetails.status)}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="detail-label">Requester Stake:</span>
-                          <span className="detail-value">{ethers.formatEther(requestDetails.requesterStake)} ETH</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="detail-label">Prover Stake:</span>
-                          <span className="detail-value">{ethers.formatEther(requestDetails.proverStake)} ETH</span>
-                        </div>
-                        {requestDetails.disputeDeadline > 0 && (
-                          <div className="detail-item">
-                            <span className="detail-label">Dispute Deadline:</span>
-                            <span className="detail-value">
-                              {new Date(Number(requestDetails.disputeDeadline) * 1000).toLocaleString()}
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                  {isProver && (
+                    <div className="info-card">
+                      <span className="info-label">Your Prover Stake</span>
+                      <span className="info-value">{proverStake} ETH</span>
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* Transaction Status */}
+              {showTxStatus && txHash && (
+                <TransactionStatus
+                  txHash={txHash}
+                  provider={provider}
+                  onSuccess={() => {
+                    setShowTxStatus(false);
+                    loadContractData();
+                  }}
+                  onError={() => setShowTxStatus(false)}
+                />
               )}
-            </div>
-          </div>
-        </main>
-      )}
+
+              {/* Tabs */}
+              <div className="tabs">
+                <button 
+                  className={activeTab === 'request' ? 'tab active' : 'tab'}
+                  onClick={() => setActiveTab('request')}
+                >
+                  📝 Request Inference
+                </button>
+                <button 
+                  className={activeTab === 'prover' ? 'tab active' : 'tab'}
+                  onClick={() => setActiveTab('prover')}
+                >
+                  👨‍💻 Prover Actions
+                </button>
+                <button 
+                  className={activeTab === 'dispute' ? 'tab active' : 'tab'}
+                  onClick={() => setActiveTab('dispute')}
+                >
+                  ⚔️ Dispute
+                </button>
+                <button 
+                  className={activeTab === 'view' ? 'tab active' : 'tab'}
+                  onClick={() => setActiveTab('view')}
+                >
+                  🔍 View Request
+                </button>
+                <button 
+                  className={activeTab === 'history' ? 'tab active' : 'tab'}
+                  onClick={() => setActiveTab('history')}
+                >
+                  📜 History
+                </button>
+              </div>
+
+              {/* Tab Content */}
+              <div className="tab-content">
+                {/* Request Inference Tab */}
+                {activeTab === 'request' && (
+                  <div className="form-section">
+                    <h3>Request AI Inference</h3>
+                    <form onSubmit={handleRequestInference}>
+                      <div className="form-group">
+                        <label>Model Name</label>
+                        <input
+                          type="text"
+                          value={modelName}
+                          onChange={(e) => setModelName(e.target.value)}
+                          placeholder="e.g., gpt-4, llama-2"
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Input Data</label>
+                        <textarea
+                          value={inputData}
+                          onChange={(e) => setInputData(e.target.value)}
+                          placeholder="Enter your input data..."
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Stake Amount (ETH) - Min: {minStake}</label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          value={stakeAmount}
+                          onChange={(e) => setStakeAmount(e.target.value)}
+                          placeholder={`Minimum ${minStake} ETH`}
+                          required
+                        />
+                      </div>
+                      <button type="submit" className="action-btn" disabled={loading}>
+                        {loading ? <><InlineSpinner /> Processing...</> : '📤 Submit Request'}
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {/* Prover Actions Tab */}
+                {activeTab === 'prover' && (
+                  <div className="form-section">
+                    <h3>Prover Actions</h3>
+                    
+                    {!isProver ? (
+                      <>
+                        <div className="info-text">
+                          Register as a prover to post inference results and earn rewards.
+                          Required stake: {minProverStake} ETH
+                        </div>
+                        <button onClick={handleRegisterProver} className="action-btn" disabled={loading}>
+                          {loading ? <><InlineSpinner /> Processing...</> : '✅ Register as Prover'}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="success-text">
+                          ✅ You are registered as a prover with {proverStake} ETH staked
+                        </div>
+
+                        <div className="divider"></div>
+
+                        <h4>Post Inference</h4>
+                        <form onSubmit={handlePostInference}>
+                          <div className="form-group">
+                            <label>Request ID</label>
+                            <input
+                              type="number"
+                              value={requestId}
+                              onChange={(e) => setRequestId(e.target.value)}
+                              placeholder="Enter request ID"
+                              required
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label>Output Data</label>
+                            <textarea
+                              value={outputData}
+                              onChange={(e) => setOutputData(e.target.value)}
+                              placeholder="Enter inference output..."
+                              required
+                            />
+                          </div>
+                          <button type="submit" className="action-btn" disabled={loading}>
+                            {loading ? <><InlineSpinner /> Processing...</> : '📝 Post Inference'}
+                          </button>
+                        </form>
+
+                        <div className="divider"></div>
+
+                        <h4>Finalize Inference</h4>
+                        <div className="form-group">
+                          <label>Request ID</label>
+                          <input
+                            type="number"
+                            value={requestId}
+                            onChange={(e) => setRequestId(e.target.value)}
+                            placeholder="Enter request ID"
+                          />
+                        </div>
+                        <button onClick={handleFinalizeInference} className="action-btn secondary" disabled={loading}>
+                          {loading ? <><InlineSpinner /> Processing...</> : '✅ Finalize Inference'}
+                        </button>
+
+                        <div className="divider"></div>
+
+                        <h4>Manage Stake</h4>
+                        <div className="form-group">
+                          <label>Additional Stake (ETH)</label>
+                          <input
+                            type="number"
+                            step="0.001"
+                            value={stakeAmount}
+                            onChange={(e) => setStakeAmount(e.target.value)}
+                            placeholder="Amount to add"
+                          />
+                        </div>
+                        <button onClick={handleIncreaseStake} className="action-btn secondary" disabled={loading}>
+                          {loading ? <><InlineSpinner /> Processing...</> : '➕ Increase Stake'}
+                        </button>
+
+                        <div className="divider"></div>
+
+                        <button onClick={handleUnregisterProver} className="action-btn danger" disabled={loading}>
+                          {loading ? <><InlineSpinner /> Processing...</> : '❌ Unregister Prover'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Dispute Tab */}
+                {activeTab === 'dispute' && (
+                  <div className="form-section">
+                    <h3>Dispute Inference</h3>
+                    <div className="warning-text">
+                      ⚠️ Disputing requires staking the combined amount of requester and prover stakes.
+                      You will lose your stake if the dispute is invalid.
+                    </div>
+                    <form onSubmit={handleDisputeInference}>
+                      <div className="form-group">
+                        <label>Request ID</label>
+                        <input
+                          type="number"
+                          value={requestId}
+                          onChange={(e) => setRequestId(e.target.value)}
+                          placeholder="Enter request ID"
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Counter Example / Proof</label>
+                        <textarea
+                          value={counterExample}
+                          onChange={(e) => setCounterExample(e.target.value)}
+                          placeholder="Provide evidence that the inference is incorrect..."
+                          required
+                        />
+                      </div>
+                      <button type="submit" className="action-btn danger" disabled={loading}>
+                        {loading ? <><InlineSpinner /> Processing...</> : '⚔️ Submit Dispute'}
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {/* View Request Tab */}
+                {activeTab === 'view' && (
+                  <div className="form-section">
+                    <h3>View Request Details</h3>
+                    <div className="form-group">
+                      <label>Request ID</label>
+                      <input
+                        type="number"
+                        value={requestId}
+                        onChange={(e) => setRequestId(e.target.value)}
+                        placeholder="Enter request ID"
+                      />
+                    </div>
+                    <button onClick={handleViewRequest} className="action-btn" disabled={loading}>
+                      {loading ? <><InlineSpinner /> Loading...</> : '🔍 View Details'}
+                    </button>
+
+                    {requestDetails && (
+                      <div className="request-details">
+                        <h4>Request Details</h4>
+                        <div className="details-grid">
+                          <div className="detail-item">
+                            <span className="detail-label">Requester</span>
+                            <span className="detail-value">{requestDetails.requester}</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">Prover</span>
+                            <span className="detail-value">{requestDetails.prover}</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">Challenger</span>
+                            <span className="detail-value">{requestDetails.challenger}</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">Requester Stake</span>
+                            <span className="detail-value">{ethers.formatEther(requestDetails.requesterStake)} ETH</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">Prover Stake</span>
+                            <span className="detail-value">{ethers.formatEther(requestDetails.proverStake)} ETH</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">Status</span>
+                            <span className="detail-value status">
+                              {['Pending', 'Posted', 'Disputed', 'Finalized', 'Settled'][requestDetails.status]}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* History Tab */}
+                {activeTab === 'history' && (
+                  <RequestHistory contract={contract} account={account} />
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </main>
 
       {/* Footer */}
       <footer className="footer">
         <div className="container">
-          <p>Built with ❤️ for the decentralized AI future</p>
+          <p>🔮 Optimistic AI Oracle - Decentralized AI Inference Platform</p>
           <p>
             <a href="https://github.com/IamTamheedNazir/optimistic-ai-oracle" target="_blank" rel="noopener noreferrer">
               GitHub
