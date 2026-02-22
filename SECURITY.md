@@ -2,7 +2,7 @@
 
 ## 🔐 Reporting a Vulnerability
 
-The ABSF-2025 team takes security seriously. We appreciate your efforts to responsibly disclose your findings.
+The Optimistic AI Oracle team takes security seriously. We appreciate your efforts to responsibly disclose your findings.
 
 ### 🚨 Please DO NOT:
 
@@ -12,7 +12,7 @@ The ABSF-2025 team takes security seriously. We appreciate your efforts to respo
 
 ### ✅ Please DO:
 
-1. **Email us directly** at [security@absf-2025.io](mailto:security@absf-2025.io) with:
+1. **Email us directly** at [security@optimistic-ai-oracle.io](mailto:security@optimistic-ai-oracle.io) with:
    - Description of the vulnerability
    - Steps to reproduce
    - Potential impact
@@ -177,7 +177,7 @@ We plan to launch a bug bounty program once the codebase reaches production read
 
 ## 📞 Contact
 
-- **Security Email:** [security@absf-2025.io](mailto:security@absf-2025.io)
+- **Security Email:** [security@optimistic-ai-oracle.io](mailto:security@optimistic-ai-oracle.io)
 - **General Email:** [tamheed@example.com](mailto:tamheed@example.com)
 - **GitHub Issues:** [Report non-security bugs](../../issues)
 
