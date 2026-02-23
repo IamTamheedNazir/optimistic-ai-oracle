@@ -17,6 +17,10 @@
 
 **✨ 100% PRODUCTION READY - 12,000+ LOC - 88+ Tests - 4 Smart Contracts - 11 Components ✨**
 
+**🎓 Academic Research Project**  
+**School of Engineering Science & Technology (SEST)**  
+**Jamia Hamdard University**
+
 </div>
 
 ## 🎯 Vision
@@ -787,7 +791,8 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 - **Ethereum Foundation** - Blockchain platform
 - **Hardhat Team** - Development tools
 - **React Team** - Frontend framework
-- **Professor Dr. Bhavya Alankar** - Academic guidance
+- **Jamia Hamdard University** - Academic support and guidance
+- **School of Engineering Science & Technology (SEST)** - Research facilities and mentorship
 
 ---
 
@@ -813,38 +818,42 @@ gantt
     title Development Roadmap
     dateFormat  YYYY-MM-DD
     section Phase 1
-    Core Contracts           :done, 2026-02-20, 1d
-    Basic Frontend          :done, 2026-02-21, 1d
+    Core Contracts           :done, 2025-06-05, 30d
+    Basic Frontend          :done, 2025-07-05, 30d
     section Phase 2
-    Advanced Features       :done, 2026-02-22, 1d
-    Fraud Proof & Governance:done, 2026-02-22, 1d
+    Advanced Features       :done, 2025-08-05, 60d
+    Fraud Proof & Governance:done, 2025-10-05, 90d
     section Phase 3
     Security Audit          :active, 2026-02-23, 28d
-    Bug Bounty Program      :2026-03-15, 14d
+    Bug Bounty Program      :2026-03-23, 14d
     section Phase 4
-    Mainnet Launch          :2026-04-01, 7d
-    Marketing Campaign      :2026-04-01, 30d
+    Mainnet Launch          :2026-04-15, 7d
+    Marketing Campaign      :2026-04-15, 30d
 ```
 
 ### ✅ Phase 1 - Foundation (Complete)
+**June 2025 - July 2025**
 - [x] Core smart contracts
 - [x] Basic frontend
 - [x] Testing suite
 - [x] Documentation
 
 ### ✅ Phase 2 - Advanced Features (Complete)
+**August 2025 - January 2026**
 - [x] Fraud proof verification
 - [x] Multi-sig governance
 - [x] Prover dashboard
 - [x] Analytics dashboard
 
 ### ⏳ Phase 3 - Security & Audit (In Progress)
+**February 2026 - April 2026**
 - [ ] Professional security audit
 - [ ] Bug bounty program
 - [ ] Performance optimization
 - [ ] Gas optimization
 
 ### 🔮 Phase 4 - Mainnet Launch (Planned)
+**April 2026 - May 2026**
 - [ ] Mainnet deployment
 - [ ] Marketing campaign
 - [ ] Community building
@@ -875,7 +884,7 @@ graph TD
     G --> I[🟡 Pending Audit]
 ```
 
-**Total Development Time:** 3 days  
+**Development Timeline:** June 2025 - February 2026 (8 months)  
 **Total Code:** 12,000+ lines  
 **Total Files:** 70+  
 **Test Coverage:** 80%+  
@@ -885,7 +894,19 @@ graph TD
 
 ---
 
-**Built with ❤️ by [Tamheed Nazir](https://github.com/IamTamheedNazir)**
+## 👨‍💻 About the Developer
+
+**Tamheed Nazir**  
+Student Researcher  
+School of Engineering Science & Technology (SEST)  
+Jamia Hamdard University
+
+This project represents 8 months of dedicated research and development in blockchain technology and decentralized AI systems, combining academic rigor with practical implementation.
+
+---
+
+**Built with ❤️ by [Tamheed Nazir](https://github.com/IamTamheedNazir)**  
+**🎓 Academic Project - Jamia Hamdard University - SEST**
 
 **⭐ Star this repo if you find it useful!**
 
